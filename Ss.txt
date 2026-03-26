@@ -1,0 +1,57 @@
+class SecurityAuditor:
+    def __init__(self):
+        self.report = []
+
+    def add(self, cat, threat, fix, line="", path=""):
+        self.report.append({
+            "category": cat,
+            "threat": threat,
+            "recommendation": fix,
+            "line_content": line,
+            "filepath": path
+        })
+
+    def audit_file_permissions(self):
+        # ... существующий код ...
+
+    def audit_network(self):
+        try:
+            output = subprocess.run(['ss', '-tulpn'], capture_output=True, text=True, timeout=30).stdout
+            pattern = re.compile(r'^(?P<netid>\w+)\s+LISTEN\s+\d+\s+\d+\s+[\d\.:]+:(?P<port>\d+)\s+[\d\.:]+:\*\s+users:\(\((?P<proc>.*?),pid=\d+,fd=\d+\)\)')
+            for line in output.splitlines():
+                match = pattern.search(line)
+                if not match:
+                    continue
+                port = match.group('port')
+                if port == '5000':      # исключаем порт графической оболочки
+                    continue
+                protocol = match.group('netid')
+                process = match.group('proc').strip('"')
+                command = f"sudo fuser -k {port}/{protocol} 2>/dev/null; sudo systemctl stop {process} 2>/dev/null; sudo iptables -A INPUT -p {protocol} --dport {port} -j DROP"
+                self.add("Сетевой аудит", f"Открыт порт {port} ({protocol}) — процесс: {process}", command)
+        except Exception:
+            pass
+
+    def audit_packages(self):
+        # ... существующий код ...
+
+    def audit_flag_search(self):
+        # ... существующий код ...
+
+    def audit_services(self):
+        # заглушка, если не нужен
+        pass
+
+    def audit_users(self):
+        # заглушка
+        pass
+
+    def run_all(self):
+        self.report = []
+        self.audit_file_permissions()
+        self.audit_network()
+        self.audit_services()
+        self.audit_users()
+        self.audit_packages()
+        self.audit_flag_search()
+        return self.report
