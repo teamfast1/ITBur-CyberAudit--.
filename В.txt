@@ -1,0 +1,24 @@
+class AuditTool:
+    def __init__(self):
+        self.reports = []
+
+    def add(self, title, description, fix_command):
+        self.reports.append((title, description, fix_command))
+
+    def audit_network(self):
+        try:
+            output = subprocess.run(['ss', '-tulpn'], capture_output=True, text=True, timeout=30).stdout
+            pattern = re.compile(r'^(?P<netid>\w+)\s+LISTEN\s+\d+\s+\d+\s+[\d\.:]+:(?P<port>\d+)\s+[\d\.:]+:\*\s+users:\(\((?P<proc>.*?),pid=\d+,fd=\d+\)\)')
+            for line in output.splitlines():
+                match = pattern.search(line)
+                if not match:
+                    continue
+                port = match.group('port')
+                if port == '5000':
+                    continue
+                protocol = match.group('netid')
+                process = match.group('proc').strip('"')
+                command = f"sudo fuser -k {port}/{protocol} 2>/dev/null; sudo systemctl stop {process} 2>/dev/null; sudo iptables -A INPUT -p {protocol} --dport {port} -j DROP"
+                self.add("Сетевой аудит", f"Открыт порт {port} ({protocol}) — процесс: {process}", command)
+        except Exception:
+            pass
