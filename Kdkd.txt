@@ -1,0 +1,44 @@
+    def audit_network(self):
+        try:
+            out = subprocess.run(['ss', '-tulpn'], capture_output=True, text=True, timeout=30).stdout
+            found_ports = set()
+            
+            for line in out.split('\n'):
+                # Обрабатываем только строки, начинающиеся с tcp или udp (включая tcp6/udp6)
+                if not line.startswith(('tcp', 'udp')):
+                    continue
+                
+                parts = line.split()
+                if len(parts) < 5:
+                    continue
+                
+                # В выводе ss колонка Local Address:Port обычно находится под индексом 4
+                local_addr_port = parts[4]
+                # Разбиваем по двоеточию и берем последний элемент (порт)
+                port = local_addr_port.split(':')[-1]
+                
+                # Проверяем, что порт действительно является числом
+                if not port.isdigit():
+                    continue
+                
+                # Исключаем рабочий порт веб-панели (5000) и уже найденные порты (чтобы избежать дублей v4/v6)
+                if port == "5000" or port in found_ports:
+                    continue
+                    
+                found_ports.add(port)
+                
+                # Пытаемся извлечь имя процесса из колонки с пользователями
+                proc = "unknown"
+                m = re.search(r'users:\(\("([^"]+)"', line)
+                if m:
+                    proc = m.group(1)
+                
+                # Нормализуем протокол для команды fuser и iptables (tcp6 -> tcp)
+                proto = parts[0][:3] 
+                
+                # Формируем универсальную команду для устранения (убить процесс на порту, остановить службу, закрыть фаерволом)
+                fix = f"sudo fuser -k {port}/{proto} && sudo systemctl stop {proc} 2>/dev/null; sudo iptables -A INPUT -p {proto} --dport {port} -j DROP"
+                
+                self.add("Сетевой аудит", f"Открыт порт {port} ({proto.upper()}) — процесс: {proc}", fix)
+        except Exception: 
+            pass
